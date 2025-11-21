@@ -137,3 +137,29 @@ Dieser Flow ist bewusst **einfach und sequenziell** gehalten und kann später um
   - Nutzung einer Vektordatenbank mit Feature-Vektoren/Embeddings (z. B. Pinecone + KaibanJS-Tooling).
 
 #### more MD files
+
+
+##updates LOG
+
+Core Updates
+
+  - app/matchTeam.ts:1 now defines the full KaibanJS roster (best-friend interviewer, summary
+    strategist, matcher, feedback coach, psychology narrator) plus reusable task runners with
+    zod-validated JSON schemas and safe env plumbing, so /api/generate can request individual
+    reasoning steps while still benefitting from Kaiban tooling.
+  - app/api/generate/route.ts:1 replaces the topic-based blog endpoint with an in-memory session
+    store + phase machine (collecting → summarizing → awaiting_confirmation → matching → feedback
+    → ended), Whisper transcription handling (multipart upload support for Chrome voice notes),
+    Pinecone embedding/query helpers, summary/match confirmation loops, feedback logging, and
+    psychology profile export that the UI can stash in sessionStorage.
+  - app/page.tsx:1 rebuilds the landing page into a React client component with dropdown-
+    configured dealbreakers, a full chat transcript, text input + MediaRecorder-driven mic/timer
+    (2-minute cap), summary confirmation card, match card, feedback form, soft-cap banner, and
+    exit control that calls the new backend actions and mirrors their state transitions.
+  - app/profile-summary/page.tsx:1 introduces the exit page that pulls the stored psychology
+    profile from sessionStorage, surfaces strengths/growth areas/experiment, and lets the user
+    jump back into the chat if no profile is available.
+  - app/globals.css:1 rewrites styling for the chat/match layout (two-column card layout, bubbles,
+    controls, banners, cards, exit CTA), while README.md:1 and package.json:1 document/install
+    the new dependencies (openai, @pinecone-database/pinecone, zod) plus the required OpenAI +
+    Pinecone env vars so Vercel deploys can be configured correctly.

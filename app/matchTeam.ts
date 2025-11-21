@@ -110,7 +110,7 @@ const bestFriendAgent = new Agent({
   background:
     'Relationship coach who teases out values, motivations, turn-ons, and dealbreakers by sounding like a supportive best friend',
   tools: [],
-  maxIterations: 30,
+  maxIterations: 3,
 });
 
 const summaryAgent = new Agent({
@@ -157,10 +157,14 @@ function resolveEnv() {
 }
 
 function parseResult<T>(raw: unknown, schema: z.ZodSchema<T>): T {
+console.log("====== schema =====", schema);
+
+console.log("====== parseResult =====", raw);
+
   if (raw == null) {
     throw new Error('Matchmaker task returned an empty result.');
   }
-
+  console.log("")
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
@@ -177,6 +181,70 @@ function parseResult<T>(raw: unknown, schema: z.ZodSchema<T>): T {
   return schema.parse(raw);
 }
 
+function logWeirdLLMOutputs(team: Team, taskTitle: string) {
+      const storeGetter =
+        typeof (team as unknown as { getStore?: () => unknown }).getStore ===
+        'function'
+          ? (team as unknown as { getStore: () => unknown }).getStore.bind(team)
+          : null;
+    
+      if (!storeGetter) {
+        return;
+      }
+    
+      try {
+        const store = storeGetter();
+        if (
+          !store ||
+          typeof (store as { getState?: () => unknown }).getState !== 'function'
+        ) {
+          return;
+        }
+    
+        const state = (store as { getState: () => { workflowLogs?: unknown[] } }).getState();
+        const logs = state.workflowLogs ?? [];
+    
+        const weirdLogs = logs.filter(
+          (log: unknown) =>
+            typeof log === 'object' &&
+            log !== null &&
+            (log as { logType?: string }).logType === 'AgentStatusUpdate' &&
+            (log as { agentStatus?: string }).agentStatus === 'WEIRD_LLM_OUTPUT'
+        );
+    
+        if (!weirdLogs.length) {
+          return;
+        }
+    
+        const pickDetails = (entry: unknown) => {
+          if (!entry || typeof entry !== 'object') {
+            return null;
+          }
+          const { timestamp, metadata } = entry as {
+            timestamp?: number;
+            metadata?: Record<string, unknown>;
+          };
+          return {
+            timestamp: timestamp ?? null,
+            message:
+              typeof metadata?.message === 'string' ? metadata.message : null,
+            output: metadata?.output ?? null
+          };
+        const first = pickDetails(weirdLogs[0]);
+    
+        console.group?.(
+          `[matchTeam] ${taskTitle} weird outputs (${weirdLogs.length})`
+        );
+        console.log('firstWeirdOutput', first);
+        }
+        console.groupEnd?.();
+      } catch (error) {
+        console.warn(
+          `[matchTeam] Unable to capture weird outputs for "${taskTitle}":`,
+          error
+        );
+      }
+    }
 function stringifyValue(value: unknown): string {
   if (value == null) {
     return String(value);
@@ -206,18 +274,24 @@ async function runTask<T>(
   });
 
   const workflow = await team.start(inputs);
-
+  console.log("====== workflow =====", workflow);
+  console.log("====== workflow =====", workflow);
+  console.log("====== workflow =====", workflow);
+  
+logWeirdLLMOutputs(team, task.title); 
   if (workflow.status !== 'FINISHED') {
     throw new Error(
       `Matchmaker task "${task.title}" did not finish (status: ${workflow.status}).`
     );
   }
-
+team.getStore().subscribe(listener => console.log(listener))
   const rawResult = workflow.result;
   let data: T;
 
   try {
     data = parseResult(rawResult, schema);
+console.log("====== rawResult =====", rawResult);
+
   } catch (error) {
     const rawOutput = stringifyValue(rawResult);
     const dropdownSummary =
@@ -239,7 +313,11 @@ async function runTask<T>(
   const stats: AgentTaskStats = workflow.stats
     ? { ...workflow.stats }
     : null;
+    console.log("====== data =====", data);
+    console.log("====== stats =====", stats);
   return { data, stats };
+
+
 }
 
 function buildInterviewTask(): Task {
