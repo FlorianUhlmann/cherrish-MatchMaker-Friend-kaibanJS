@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Matchmaker MVP
 
-## Getting Started
+This repo hosts a KaibanJS + Next.js demo where a “best-friend” agent interviews the user, summarizes their dream partner, runs a Pinecone similarity search, and walks through a feedback/psychology summary loop. It is built for Node.js 20 and Vercel deployment.
 
-First, run the development server:
+## Features
+
+- Conversational UI with dropdown dealbreakers, soft-cap nudge, and Chrome-compatible voice capture (MediaRecorder → Whisper).
+- Stateful `/api/generate` route that manages phases (`collecting → summarizing → awaiting_confirmation → matching → feedback → ended`) and stores session data in-memory.
+- KaibanJS agents (`matchTeam.ts`) for interviewing, summarizing, match narration, feedback coaching, and psychology profiling.
+- Pinecone top-1 search using OpenAI embeddings plus dropdown filters, with RAG-style copy for the match card.
+- Exit page (`/profile-summary`) that surfaces the psychology summary stored in `sessionStorage`.
+
+## Environment Variables
+
+Create `.env.local` (Vercel-compatible) with:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini               # optional, defaults to gpt-4o-mini
+OPENAI_WHISPER_MODEL=gpt-4o-mini-transcribe
+OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+PINECONE_API_KEY=pc-...
+PINECONE_INDEX=matchmaker-index
+PINECONE_NAMESPACE=profiles            # optional
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+You can also export `TAVILY_API_KEY` or other Kaiban tool keys if you extend the agents.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Running the app
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev     # Next.js dev server
+```
 
-## Learn More
+The chat experience lives at `http://localhost:3000/` and the psychology summary page at `http://localhost:3000/profile-summary`.
 
-To learn more about Next.js, take a look at the following resources:
+### Build & lint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architecture Notes
 
-## Deploy on Vercel
+- `app/matchTeam.ts` defines reusable KaibanJS agents + tasks and exposes helper functions invoked by the API route.
+- `app/api/generate/route.ts` stores per-session state in-memory, handles Whisper transcription, orchestrates stages, calls Pinecone, and returns payloads for the UI.
+- `app/page.tsx` is a client component that mirrors the server phase machine, manages voice recording + dropdowns, and renders summary/match/feedback cards.
+- `app/profile-summary/page.tsx` renders the exit summary using sessionStorage data (MVP scope—swap for persistent storage later).
+- All external services (OpenAI + Pinecone) are optional at dev time, but the API will error if they aren’t configured when those phases are triggered.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The project targets Vercel. Set the same environment variables inside your Vercel project dashboard (`Settings → Environment Variables`) and run `vercel --prod` once the build passes locally.

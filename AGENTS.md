@@ -1,98 +1,139 @@
-Absolut! Hier ist die aktualisierte `AGENTS.md`-Datei. Ich habe den von Ihnen gewünschten Kontext als "Meta-Anweisung" für den Codex-Agenten an den Anfang der Datei gestellt.
-
----
-
-# AI Agent Definitions (AGENTS.MD)
+# AI Matchmaker Agent Definitions (AGENTS.md)
 
 ## 🎯 Meta-Kontext: Deine Rolle als Assistent (Codex)
 
-Dieses Dokument beschreibt primär die technische Spezifikation der KI-Agenten *innerhalb der Tutorial-App* (Ava und Kai).
+Dieses Dokument beschreibt primär die fachliche und technische Spezifikation der KI-Agenten *innerhalb der Matchmaker-App*.
 
-Deine übergeordnete Rolle, Codex, ist es jedoch, als **hilfsbereiter Mentor** für den Entwickler zu agieren, der dieses Tutorial durcharbeitet.
+Deine übergeordnete Rolle, Codex, ist es jedoch, als **hilfsbereiter Mentor** für den Entwickler zu agieren, der dieses Projekt auf Basis von Next.js, React und KaibanJS aufbaut.
 
 **Wichtiger Benutzerkontext:**
 
-* **Benutzer-Persona:** Du unterstützt einen **Senior-Entwickler** (erfahrener Entwickler), der jedoch **neu im Bereich Next.js und React** ist.
-* **Lernziele:** Das Hauptziel des Benutzers ist es, Next.js ("Next Jazz") und React ("rec") von Grund auf zu lernen.
-* **Entwicklungsumgebung:** Der Entwickler verwendet **Node.js v20** ("No. 20") auf seinem Rechner. Alle Ratschläge, Code-Beispiele und Fehlerbehebungen müssen mit dieser Version kompatibel sein.
+- **Benutzer-Persona:** Du unterstützt einen **Senior-Entwickler**, der jedoch **neu im Bereich Next.js und React** ist.
+- **Lernziele:** Das Hauptziel des Benutzers ist es, Next.js („Next Jazz“) und React („Rec“) von Grund auf zu lernen und dabei eine echte, sinnvolle Anwendung (AI Matchmaker) zu bauen.
+- **Entwicklungsumgebung:** Der Entwickler verwendet **Node.js v20** („No. 20“) auf seinem Rechner. Alle Ratschläge, Code-Beispiele und Fehlerbehebungen müssen mit dieser Version kompatibel sein.
 
 **Deine Kernaufgaben als "Helfer":**
 
-1.  **Systemverständnis:** Hilf dem Benutzer, das System (die KaibanJS/Next.js-Integration) und die Architektur der App kennenzulernen.
-2.  **Tutorial-Führung:** Führe den Benutzer aktiv durch die Schritte des Tutorials. Erkläre, *warum* bestimmte Schritte unternommen werden.
-3.  **Proaktive Problemlösung:** Wenn Probleme, Fehler oder Verständnisfragen (z. B. zu React-Hooks oder Next.js-Routing) auftreten, ist es deine Aufgabe, aktiv bei der Lösung zu helfen. Biete klare Erklärungen und korrekte Code-Beispiele an, die auf die **Node.js v20-Umgebung** zugeschnitten sind.
+1. **Systemverständnis:** Hilf dem Benutzer, das System (Next.js + KaibanJS + Vektordatenbank) und die Architektur der Matchmaker-App zu verstehen.
+2. **Tutorial-Führung:** Führe den Benutzer schrittweise durch die Implementierung (Komponenten, Routen, Agenten-Setup, Tools) und erkläre immer auch *warum* bestimmte Schritte unternommen werden.
+3. **Proaktive Problemlösung:** Unterstütze bei Fragen zu React-Hooks, Next.js-Routing, KaibanJS-Teams, Pinecone-Integration und RAG-Pattern mit klaren, Node.js-20-kompatiblen Beispielen.
 
 ---
 
-## 📖 Spezifikation der App-Agenten
+## 💡 Produktvision: AI Matchmaker
 
-Die folgenden Definitionen beschreiben die KI-Agenten, Tools, Aufgaben und die Teamstruktur, die *innerhalb der Tutorial-Anwendung* in `src/app/blogTeam.js` definiert sind.
+**Business-Ziel (in einem Satz):**  
+Eine **AI Matchmaker**-App hilft Nutzern dabei, schneller passende, potenzielle Partner zu finden.
 
-## 🛠️ Tool Definitions
+**Kurzbeschreibung der User Journey:**
 
-Before defining the agents, a search tool is instantiated.
-
-### 1. Tavily Search Tool
-
-* **Variable Name:** `searchTool`
-* **Type:** `TavilySearchResults` (from `@langchain/community/tools/tavily_search`)
-* **Configuration:**
-    * `maxResults`: 5
-    * `apiKey`: `process.env.NEXT_PUBLIC_TRAVILY_API_KEY`
+- Der User führt zunächst ein Gespräch mit einem **Matchmaker-Agenten**, der versteht, was der User sucht (Werte, Wünsche, Grenzen, Motivation, psychologisches Profil).
+- Auf Basis dieses Profils durchsucht ein **Matching-Agent** eine **Vektordatenbank** mit anderen Profilen und schlägt ein passendes Match vor – in einem menschlich klingenden, an den User angepassten Tonfall.
+- Der User kann das Match **akzeptieren** („passt zu mir“) oder **ablehnen** („zeige mir jemand anderen“).
+- Bei Ablehnung wird ein **weiteres Match** vorgeschlagen. Der Prozess ist in der ersten Version bewusst **sequenziell** gehalten und kann später um komplexere Feedback-Schleifen erweitert werden.
 
 ---
 
-## 🤖 Agent Definitions
+## 🏗️ Technische Architektur (High Level)
 
-Two distinct AI agents are defined for this project.
+- **Frontend / App-Framework:** Next.js + React (Node.js v20).
+- **Agenten-Orchestrierung:** KaibanJS (Agenten, Tasks, Teams).
+- **Vektordatenbank:** Pinecone (über KaibanJS-Tool), genutzt für:
+  - Speichern von Nutzerprofilen als **Feature-Vektoren / Embeddings**.
+  - Ähnlichkeitssuche, um passende Profile zu finden.
+- **RAG-Nutzung:**
+  - Der Matching-Agent nutzt RAG, um aus Vektor-Treffern und Profilinformationen eine gut lesbare, menschliche Beschreibung des vorgeschlagenen Matches zu erzeugen.
 
-### 1. Ava (Research Agent)
-
-* **Name:** `'Ava'`
-* **Role:** `'News Researcher'`
-* **Goal:** `'Find and summarize the latest news on a given topic'`
-* **Background:** `'Experienced in data analysis and information gathering'`
-* **Tools:** `[searchTool]` (Uses the `TavilySearchResults` tool)
-
-### 2. Kai (Writer Agent)
-
-* **Name:** `'Kai'`
-* **Role:** `'Content Creator'`
-* **Goal:** `'Create engaging blog posts based on provided information'`
-* **Background:** `'Skilled in writing and content creation'`
-* **Tools:** `[]` (No tools assigned)
+Details wie konkrete Dateipfade (z. B. `app/matchTeam.ts`) und Tool-Namen können sich im Verlauf des Projekts noch ändern und werden iterativ konkretisiert.
 
 ---
 
-## 📝 Task Definitions
+## 🤖 Agenten-Rollen
 
-Two tasks are created and assigned to the agents.
+In der ersten Ausbaustufe sind zwei Hauptagenten geplant. Beide Rollen sind bewusst **generisch formuliert**, damit die konkrete Implementierung sich im Projektverlauf entwickeln kann.
 
-### 1. Research Task
+### 1. Matchmaker & Coach Agent (Gespräch mit dem User)
 
-* **Variable Name:** `researchTask`
-* **Title:** `'Latest news research'`
-* **Description:** `'Research the latest news on the topic: {topic}'`
-* **Expected Output:** `'A summary of the latest news and key points on the given topic'`
-* **Assigned Agent:** `researchAgent` (Ava)
+- **Name (konzeptionell):** „Matchmaker Agent“
+- **Rolle:**
+  - Führt ein dialogorientiertes, psychologisch angehauchtes Gespräch mit dem User.
+  - Fragt nach Wünschen, Bedürfnissen, Grenzen, Werten und Motivation in Bezug auf eine Partnerschaft.
+- **Ziel:**
+  - Ein psychologisches/semantisches **Suchprofil des Wunschpartners** des Users erstellen.
+  - Dieses Suchprofil wird als Grundlage für die RAG-Suche in der Vektordatenbank verwendet.
+- **Verhalten / Tonfall:**
+  - Coaching-/Gesprächs-Charakter, empathisch und mit Humor.
+  - Passt sich an den User an:
+    - Wenn der User kurz antwortet, bleibt der Agent eher knapp.
+    - Wenn der User ausführlich wird, darf der Agent auch tiefer gehen.
+- **Technische Aufgaben:**
+  - Generiert ein strukturiertes Suchprofil (z. B. JSON-artige Daten, die später in Embeddings überführt werden können).
+  - Übergibt dieses Profil an ein Tool, das es als **Feature-Vektor** für die Suche in der Vektordatenbank aufbereitet.
+- **Tools (konzeptionell):**
+  - `searchProfileVectorTool` – bereitet das Suchprofil als Vektor auf und stellt es für die Match-Suche zur Verfügung.
 
-### 2. Writing Task
+### 2. Matching & Recommendation Agent (Vorschläge aus der Vektordatenbank)
 
-* **Variable Name:** `writingTask`
-* **Title:** `'Blog post writing'`
-* **Description:** `'Write a blog post about {topic} based on the provided research'`
-* **Expected Output:** `'An engaging blog post summarizing the latest news on the topic in Markdown format'`
-* **Assigned Agent:** `writerAgent` (Kai)
+- **Name (konzeptionell):** „Matching Agent“
+- **Rolle:**
+  - Sucht passende potenzielle Partnerprofile in der Vektordatenbank.
+  - Bereitet den ausgewählten Vorschlag in einer Art „Vorstellung“ für den User auf.
+- **Ziel:**
+  - Einen **Match** finden, der möglichst gut zum durch den Matchmaker Agenten erstellten Suchprofil passt.
+  - Den Match so erklären, dass der User eine schnelle Entscheidung treffen kann („passt / passt nicht“).
+- **Verhalten / Tonfall:**
+  - Stellt Matches kurz und verständlich vor.
+  - Erklärt nur knapp, warum der Kandidat passt, z. B.:
+    - „Ihr teilt Eigenschaften A, B, C – deshalb könnte diese Person gut zu dir passen.“
+- **Technische Aufgaben:**
+  - Führt eine **Ähnlichkeitssuche** in der Vektordatenbank aus, basierend auf dem Suchprofil des Users.
+  - Nutzt RAG, um aus Vektor-Treffern eine konsistente, natürliche Textbeschreibung zu generieren.
+  - Reagiert auf Feedback des Users:
+    - Bei „passt nicht“ sucht er einen weiteren Kandidaten und stellt ihn vor.
+    - Bei „passt“ kann er optional nächste Schritte einleiten (z. B. „Match akzeptiert“-Status).
+- **Tools (konzeptionell):**
+  - `matchSearchTool` – führt eine Vektor-Suche gegen Pinecone aus.
+  - Optional: `matchDetailFetchTool` – um zusätzliche Profildetails/Metadaten zu laden.
 
 ---
 
-## 🤝 Team Assembly
+## 🔄 Ablauf: Sequenzieller Flow (erste Version)
 
-The agents and tasks are assembled into a single team.
+1. **User startet den Chat** mit dem Matchmaker Agent.
+2. **Matchmaker Agent** stellt Fragen und erstellt ein **Suchprofil für einen potenziellen Partner** (Wünsche, psychologische und inhaltliche Merkmale, in Feature-Vektoren überführbar).
+3. Dem User wird eine **Zusammenfassung des Suchprofils** gezeigt. Nach Bestätigung wird die eigentliche Suche gestartet.
+4. Das Suchprofil wird über ein Tool in eine **Vektor-Repräsentation** überführt und für die Abfrage der Vektordatenbank genutzt.
+5. Der **Matching Agent** fragt auf Basis dieses Suchprofils die Vektordatenbank ab und findet einen passenden Kandidaten.
+6. Der Matching Agent stellt den Kandidaten kurz vor und erklärt grob, warum dieser passen könnte.
+7. Der User entscheidet:
+   - **Ja:** Match wird akzeptiert (Status kann gespeichert werden).
+   - **Nein:** Matching Agent sucht einen weiteren Kandidaten und stellt diesen vor.
 
-* **Variable Name:** `blogTeam`
-* **Name:** `'AI News Blogging Team'`
-* **Agents:** `[researchAgent, writerAgent]`
-* **Tasks:** `[researchTask, writingTask]`
-* **Environment Configuration:**
-    * `OPENAI_API_KEY`: `process.env.NEXT_PUBLIC_OPENAI_API_KEY`
+Dieser Flow ist bewusst **einfach und sequenziell** gehalten und kann später um komplexere Feedback- und Lernmechanismen erweitert werden.
+
+---
+
+## 🧱 Vektordatenbank & Profile (abstrakt)
+
+- Es wird eine **Vektordatenbank** (z. B. Pinecone) genutzt.
+- Gespeicherte bzw. abgefragte Inhalte:
+  - Psychologische und inhaltliche Merkmale, die das Suchprofil des Users beschreiben, in Form von Feature-Vektoren / Embeddings.
+  - Profile potenzieller Partner, ebenfalls als Vektoren in derselben Datenbank.
+- In dieser Phase des Projekts ist bewusst **nicht festgelegt**, welches konkrete Schema die Profile haben.
+  - In `AGENTS.md` wird nur festgehalten, dass mit **Feature-Vektoren / Embeddings** gearbeitet wird.
+  - Die konkrete Struktur entsteht im Verlauf der Implementierung.
+
+---
+
+## 🧭 Status & Offenheit für Änderungen
+
+- Diese `AGENTS.md` beschreibt die **erste Version** der Agentenlandschaft und des Flows für den AI Matchmaker.
+- Agenten-Namen, Tonalität, konkrete Tool-Namen und Dateipfade sind **noch nicht final** und können im Projektverlauf angepasst werden.
+- Wichtig ist, dass folgende Punkte klar bleiben:
+  - Business-Ziel: AI Matchmaker für schnellere, passendere Partnerfindung.
+  - Zwei Hauptagenten:
+    - Matchmaker/Coach (Profil- und Suchprofil-Aufbau).
+    - Matching/Recommendation (Vektorsuche + Vorstellung der Matches).
+  - Nutzung einer Vektordatenbank mit Feature-Vektoren/Embeddings (z. B. Pinecone + KaibanJS-Tooling).
+
+#### more MD files
