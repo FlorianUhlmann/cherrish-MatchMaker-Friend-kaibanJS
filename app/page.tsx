@@ -3,19 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
-  DropdownSelections,
   PreferenceSummary,
   SessionPhase,
-  MatchNarrative,
-  PsychologyProfile
+  PsychologyProfile,
+  PresentedMatch
 } from './matchTeam';
-
-type PresentedMatch = {
-  id: string;
-  narrative: MatchNarrative;
-  vectorScore?: number;
-  metadata?: Record<string, unknown>;
-};
 
 type ChatMessage = {
   id: string;
@@ -35,20 +27,7 @@ type ApiResponse = {
   transcript?: string | null;
   softCap: boolean;
   turnCount: number;
-  dropdowns: DropdownSelections;
   nudge?: boolean;
-};
-
-const DEFAULT_DROPDOWNS: DropdownSelections = {
-  ageBracket: '30s',
-  location: 'Berlin',
-  wantsKids: 'Undecided'
-};
-
-const dropdownOptions: Record<string, string[]> = {
-  ageBracket: ['20s', '30s', '40s', '50s', '60s+', 'Surprise me'],
-  location: ['Berlin', 'Munich', 'Hamburg', 'Cologne', 'Remote Europe'],
-  wantsKids: ['Yes', 'No', 'Undecided', 'Already have']
 };
 
 export default function Home() {
@@ -56,8 +35,6 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<SessionPhase>('collecting');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [dropdowns, setDropdowns] =
-    useState<DropdownSelections>(DEFAULT_DROPDOWNS);
   const [input, setInput] = useState('');
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
   const [matchCard, setMatchCard] = useState<PresentedMatch | null>(null);
@@ -116,7 +93,6 @@ export default function Home() {
   ): Promise<ApiResponse> => {
     const payload = {
       sessionId: sessionId ?? undefined,
-      dropdowns,
       ...body
     };
 
@@ -190,7 +166,6 @@ export default function Home() {
     }
     setSoftCap(Boolean(body.nudge ?? body.softCap));
     setTurnCount(body.turnCount);
-    setDropdowns(body.dropdowns);
 
     if (body.transcript && extra?.voiceMessageId) {
       patchMessage(extra.voiceMessageId, body.transcript);
@@ -426,29 +401,6 @@ export default function Home() {
           <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
         </header>
 
-        <div className="dropdown-row">
-          {Object.entries(dropdownOptions).map(([key, options]) => (
-            <label key={key}>
-              <span>{formatDropdownLabel(key)}</span>
-              <select
-                value={dropdowns[key] ?? ''}
-                onChange={(event) =>
-                  setDropdowns((prev) => ({
-                    ...prev,
-                    [key]: event.target.value
-                  }))
-                }
-              >
-                {options.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-
         {softCap && (
           <div className="nudge-banner">
             You have reached {turnCount} turns. Grab your summary soon so we can
@@ -609,17 +561,4 @@ export default function Home() {
       </aside>
     </main>
   );
-}
-
-function formatDropdownLabel(key: string) {
-  switch (key) {
-    case 'ageBracket':
-      return 'Age focus';
-    case 'location':
-      return 'City vibe';
-    case 'wantsKids':
-      return 'Kids preference';
-    default:
-      return key;
-  }
 }
