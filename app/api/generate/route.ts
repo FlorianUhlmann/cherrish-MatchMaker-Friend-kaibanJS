@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { randomUUID } from 'node:crypto';
 
-import { runInterviewTurn } from '../../matchTeam';
+import {
+  preferenceSummaryFromEvaluation,
+  runInterviewSummaryEvaluation,
+  runInterviewTurn
+} from '../../matchTeam';
 import type {
+  InterviewSummaryEvaluation,
   PresentedMatch,
   PreferenceSummary,
   PsychologyProfile,
@@ -17,6 +22,7 @@ const SUMMARY_TRIGGER_TURNS = 3;
 type SessionAction =
   | 'init'
   | 'send_message'
+  | 'transcribe_voice'
   | 'confirm_summary'
   | 'request_more_questions'
   | 'submit_feedback'
@@ -39,6 +45,7 @@ interface SessionState {
   interviewTurns: number;
   readyForSummary: boolean;
   summary?: PreferenceSummary;
+  summaryEvaluation?: InterviewSummaryEvaluation;
   matches: PresentedMatch[];
   currentMatch: PresentedMatch | null;
   feedbackNotes: string[];
@@ -99,6 +106,10 @@ export async function POST(request: Request) {
     switch (action) {
       case 'send_message': {
         const { response } = await handleSendMessage(session, payload, audioFile);
+        return NextResponse.json(response);
+      }
+      case 'transcribe_voice': {
+        const response = await handleTranscribeVoice(session, audioFile);
         return NextResponse.json(response);
       }
       case 'confirm_summary': {
@@ -186,6 +197,7 @@ function ensureSession(
     interviewTurns: 0,
     readyForSummary: false,
     summary: undefined,
+    summaryEvaluation: undefined,
     matches: [],
     currentMatch: null,
     feedbackNotes: [],
@@ -258,7 +270,16 @@ async function handleSendMessage(
   });
 
   appendAssistantMessage(session, data.reply);
-  ensureSummaryReady(session);
+  const { data: evaluation } = await runInterviewSummaryEvaluation({
+    conversationHistory: buildConversationHistory(session),
+    latestUserMessage: text
+  });
+  session.summaryEvaluation = evaluation;
+
+  const summaryPrompt = ensureSummaryReady(session, evaluation);
+  if (summaryPrompt) {
+    appendAssistantMessage(session, summaryPrompt);
+  }
 
   return {
     response: buildResponse(session, {
@@ -267,6 +288,21 @@ async function handleSendMessage(
       transcript,
     })
   };
+}
+
+async function handleTranscribeVoice(
+  session: SessionState,
+  audioFile: File | null
+): Promise<ResponseBody> {
+  if (!audioFile) {
+    throw new Error('No audio file was provided for transcription.');
+  }
+
+  const transcript = await transcribeAudio(audioFile);
+
+  return buildResponse(session, {
+    transcript
+  });
 }
 
 async function handleConfirmSummary(
@@ -456,16 +492,29 @@ function buildConversationHistory(session: SessionState): string {
     .join('\n');
 }
 
-function ensureSummaryReady(session: SessionState) {
+function ensureSummaryReady(
+  session: SessionState,
+  evaluation?: InterviewSummaryEvaluation
+): string | null {
   if (session.readyForSummary || session.stage !== 'collecting') {
-    return;
+    return null;
+  }
+
+  if (evaluation?.readyForSummary) {
+    session.summary = preferenceSummaryFromEvaluation(evaluation);
+    session.readyForSummary = true;
+    session.stage = 'awaiting_confirmation';
+    return evaluation.confirmationPrompt;
   }
 
   if (session.interviewTurns >= SUMMARY_TRIGGER_TURNS) {
     session.summary = deriveSummaryFromConversation(session);
     session.readyForSummary = true;
     session.stage = 'awaiting_confirmation';
+    return 'I think I captured a nice summary. Did I understand you correctly?';
   }
+
+  return null;
 }
 
 function deriveSummaryFromConversation(session: SessionState): PreferenceSummary {

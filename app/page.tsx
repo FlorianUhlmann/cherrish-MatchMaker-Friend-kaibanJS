@@ -1,6 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent
+} from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   PreferenceSummary,
@@ -47,8 +52,15 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const meterFrameRef = useRef<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [volumeLevel, setVolumeLevel] = useState(0);
+  const sendAfterStopRef = useRef(false);
+  const recordingActiveRef = useRef(false);
 
   useEffect(() => {
     void initSession();
@@ -124,12 +136,17 @@ export default function Home() {
     return data;
   };
 
-  const pushUserMessage = (content: string, via: 'text' | 'voice') => {
+  const pushUserMessage = (
+    content: string,
+    via: 'text' | 'voice',
+    pending = false
+  ) => {
     const next: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content,
-      via
+      via,
+      pending
     };
     setMessages((prev) => [...prev, next]);
     return next.id;
@@ -144,18 +161,7 @@ export default function Home() {
     setMessages((prev) => [...prev, next]);
   };
 
-  const patchMessage = (id: string, content: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === id ? { ...msg, content, pending: false } : msg
-      )
-    );
-  };
-
-  const applyServerResponse = (
-    body: ApiResponse,
-    extra?: { voiceMessageId?: string }
-  ) => {
+  const applyServerResponse = (body: ApiResponse) => {
     setSessionId(body.sessionId);
     setPhase(body.phase);
     if (body.summary !== undefined) {
@@ -166,10 +172,6 @@ export default function Home() {
     }
     setSoftCap(Boolean(body.nudge ?? body.softCap));
     setTurnCount(body.turnCount);
-
-    if (body.transcript && extra?.voiceMessageId) {
-      patchMessage(extra.voiceMessageId, body.transcript);
-    }
 
     if (body.agentReply) {
       pushAssistantMessage(body.agentReply);
@@ -183,13 +185,75 @@ export default function Home() {
     }
   };
 
+  const appendTranscriptToComposer = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    setInput((prev) => {
+      if (!prev) {
+        return trimmed;
+      }
+      const needsSpace = !/\s$/.test(prev);
+      return `${prev}${needsSpace ? ' ' : ''}${trimmed}`;
+    });
+  };
+
+  const sendVoiceBlob = async (blob: Blob) => {
+    if (loadingAction === 'send_voice') return;
+    setLoadingAction('send_voice');
+    try {
+      const response = await callApi({ action: 'transcribe_voice' }, blob);
+      applyServerResponse(response);
+      if (response.transcript) {
+        appendTranscriptToComposer(response.transcript);
+      }
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const clearCachedProfile = () => {
+    sessionStorage.removeItem('matchmaker:profile');
+  };
+
+  const resetConversationState = () => {
+    setSessionId(null);
+    setPhase('collecting');
+    setMessages([]);
+    setInput('');
+    setSummary(null);
+    setMatchCard(null);
+    setFeedbackText('');
+    setLoadingAction(null);
+    setError(null);
+    setSoftCap(false);
+    setTurnCount(0);
+    setIsRecording(false);
+    setRecordSeconds(0);
+    setVolumeLevel(0);
+  };
+
+  const handleRestartChat = async () => {
+    stopRecording();
+    if (timerRef.current) {
+      window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    clearCachedProfile();
+    resetConversationState();
+    await initSession();
+  };
+
   const handleSend = async () => {
     if (!input.trim()) {
       return;
     }
-    setLoadingAction('send_message');
     const text = input.trim();
     setInput('');
+    setLoadingAction('send_message');
     pushUserMessage(text, 'text');
     try {
       const response = await callApi({
@@ -201,6 +265,16 @@ export default function Home() {
       handleError(err);
     } finally {
       setLoadingAction(null);
+    }
+  };
+
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (disableSend) {
+        return;
+      }
+      void handleSend();
     }
   };
 
@@ -288,9 +362,14 @@ export default function Home() {
     }
   };
 
+  const finalizeRecording = (shouldSend: boolean) => {
+    if (!recordingActiveRef.current) return;
+    sendAfterStopRef.current = shouldSend;
+    stopRecording();
+  };
+
   const toggleRecording = async () => {
-    if (isRecording) {
-      stopRecording();
+    if (isRecording || loadingAction === 'send_voice') {
       return;
     }
 
@@ -315,6 +394,7 @@ export default function Home() {
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
+      startAudioVisualization(stream);
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -329,24 +409,34 @@ export default function Home() {
         }
         setIsRecording(false);
         setRecordSeconds(0);
+        stopAudioVisualization();
         const blob = new Blob(chunksRef.current, {
           type: mimeType.includes('webm') ? 'audio/webm' : 'audio/mp4'
         });
         chunksRef.current = [];
-        if (blob.size > 0) {
+        const shouldSend = sendAfterStopRef.current;
+        sendAfterStopRef.current = false;
+        if (blob.size > 0 && shouldSend) {
           void sendVoiceBlob(blob);
         }
       };
 
       recorder.start();
+      recordingActiveRef.current = true;
       setIsRecording(true);
+      setRecordSeconds(0);
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
       timerRef.current = window.setInterval(() => {
         setRecordSeconds((prev) => {
-          if (prev + 1 >= 120) {
-            stopRecording();
-            return prev;
+          const next = prev + 1;
+          if (next >= 120) {
+            finalizeRecording(true);
+            return 120;
           }
-          return prev + 1;
+          return next;
         });
       }, 1000);
     } catch (err) {
@@ -354,27 +444,76 @@ export default function Home() {
     }
   };
 
+  const handleRecordingConfirm = () => {
+    finalizeRecording(true);
+  };
+
+  const handleRecordingAbort = () => {
+    finalizeRecording(false);
+  };
+
   const stopRecording = () => {
+    recordingActiveRef.current = false;
     const recorder = mediaRecorderRef.current;
     if (recorder) {
       recorder.stop();
       recorder.stream.getTracks().forEach((track) => track.stop());
       mediaRecorderRef.current = null;
     }
+    stopAudioVisualization();
   };
 
-  const sendVoiceBlob = async (blob: Blob) => {
-    setLoadingAction('send_voice');
-    const placeholderId = pushUserMessage('Transcribing voice note…', 'voice');
-    try {
-      const response = await callApi({ action: 'send_message' }, blob);
-      applyServerResponse(response, { voiceMessageId: placeholderId });
-    } catch (err) {
-      handleError(err);
-      patchMessage(placeholderId, 'Voice note failed. Try again?');
-    } finally {
-      setLoadingAction(null);
+  const stopAudioVisualization = () => {
+    if (meterFrameRef.current) {
+      cancelAnimationFrame(meterFrameRef.current);
+      meterFrameRef.current = null;
     }
+    setVolumeLevel(0);
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+    if (audioSourceRef.current) {
+      audioSourceRef.current.disconnect();
+      audioSourceRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  };
+
+  const startAudioVisualization = (stream: MediaStream) => {
+    stopAudioVisualization();
+    const AudioContextCtor =
+      window.AudioContext ??
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+    const audioContext = new AudioContextCtor();
+    audioContextRef.current = audioContext;
+    const source = audioContext.createMediaStreamSource(stream);
+    audioSourceRef.current = source;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    const updateLevel = () => {
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i += 1) {
+        sum += dataArray[i];
+      }
+      const average = bufferLength ? sum / bufferLength : 0;
+      setVolumeLevel(average / 255);
+      meterFrameRef.current = requestAnimationFrame(updateLevel);
+    };
+    updateLevel();
   };
 
   const disableSend =
@@ -382,24 +521,28 @@ export default function Home() {
     loadingAction === 'send_voice' ||
     !input.trim();
 
-  const formattedTimer = useMemo(() => {
-    const minutes = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
-    const seconds = String(recordSeconds % 60).padStart(2, '0');
-    return `${minutes}:${seconds}`;
-  }, [recordSeconds]);
-
   return (
     <main className="page">
       <section className="chat-card">
-        <header className="chat-header">
-          <div>
-            <h1>AI Matchmaker (MVP)</h1>
-            <p className="chat-subtitle">
-              Talk to your best-friend agent to describe your dream partner.
-            </p>
-          </div>
-          <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
-        </header>
+          <header className="chat-header">
+            <div>
+              <h1>AI Matchmaker (MVP)</h1>
+              <p className="chat-subtitle">
+                Talk to your best-friend agent to describe your dream partner.
+              </p>
+            </div>
+            <div className="header-actions">
+              <button
+                type="button"
+                className="restart-button"
+                onClick={handleRestartChat}
+                disabled={loadingAction === 'init'}
+              >
+                Restart chat
+              </button>
+              <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
+            </div>
+          </header>
 
         {softCap && (
           <div className="nudge-banner">
@@ -426,26 +569,81 @@ export default function Home() {
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
             placeholder="Type your answer here…"
             disabled={loadingAction === 'send_message'}
           />
           <div className="composer-actions">
-            <button
-              type="button"
-              className={`mic ${isRecording ? 'recording' : ''}`}
-              onClick={toggleRecording}
-              disabled={loadingAction === 'send_voice'}
-            >
-              {isRecording ? 'Stop' : 'Mic'}
-            </button>
-            <span className="timer">{isRecording ? formattedTimer : '02:00'}</span>
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={disableSend}
-            >
-              Send
-            </button>
+            {isRecording && (
+              <div className="mic-visualizer">
+                <div className="mic-meter active">
+                  <span
+                    className="mic-meter__level"
+                    style={{
+                      transform: `scaleX(${Math.max(0.08, volumeLevel)})`
+                    }}
+                  />
+                </div>
+                <span
+                  className={`timer ${recordSeconds >= 110 ? 'timer--warning' : ''}`}
+                >
+                  {`${recordSeconds}/120s`}
+                </span>
+              </div>
+            )}
+            <div className="composer-controls">
+              {isRecording ? (
+                <div className="mic-actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={handleRecordingAbort}
+                  >
+                    Abort
+                  </button>
+                  <button type="button" onClick={handleRecordingConfirm}>
+                    OK
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`mic ${
+                    loadingAction === 'send_voice' ? 'loading' : ''
+                  }`}
+                  onClick={toggleRecording}
+                  disabled={loadingAction === 'send_voice'}
+                >
+                  <span className="mic-icon" aria-hidden="true">
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
+                      <path d="M8 4a2 2 0 0 1 2 2v3a2 2 0 0 1-4 0V6a2 2 0 0 1 2-2z" />
+                      <path d="M5 9a3 3 0 0 0 6 0" />
+                      <line x1="8" y1="12" x2="8" y2="15" />
+                      <line x1="5" y1="15" x2="11" y2="15" />
+                    </svg>
+                  </span>
+                  <span className="mic-label">Mic</span>
+                  {loadingAction === 'send_voice' && (
+                    <span className="mic-spinner" aria-hidden="true" />
+                  )}
+                </button>
+              )}
+              <button
+                type="button"
+                className="send-button"
+                onClick={handleSend}
+                disabled={disableSend}
+              >
+                Send
+              </button>
+            </div>
           </div>
         </div>
         {error && <div className="error-banner">{error}</div>}

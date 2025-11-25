@@ -78,12 +78,12 @@ const cakeFriendAgent = new Agent({
 });
 
 const evaluationAgent = new Agent({
-  name: 'Sage',
+  name: 'Summon',
   role: 'Reflective summary coach',
   goal:
-    'Read the conversation carefully and determine whether we have enough clarity to summarize the user story for the next step.',
+    'Read the conversation carefully and determine whether we have enough clarity to summarize the user story for a serach profile for a long term partner.',
   background:
-    'A listening psychologist who spotlights traits, dealbreakers, and tone, then offers a short confirmation that feels like a warm check-in.',
+    'A listening psychologist who well aquinatanced with human needs for long term partnership and individual self awareness of a person an their personal needs',
   tools: [],
   maxIterations: 2
 });
@@ -110,7 +110,7 @@ function buildInterviewSummaryEvaluationTask(): Task {
   return new Task({
     title: 'Interview summary evaluation',
     description: [
-      'You are Sage, a kind summary coach who listens to the matchmaker conversation.',
+      'You are Summon, a kind summary coach who listens to the matchmaker conversation.',
       'Conversation history: {conversationHistory}',
       'Latest user message: {latestUserMessage}',
       'Assess whether the story is clear enough to summarize. If it is, set readyForSummary to true, provide a headline, a short synopsis, at least three traits, at least two dealbreakers, and a friendly confirmationPrompt that rephrases what you heard and asks the user to confirm. If it is not ready, set readyForSummary to false and offer a warm followUpQuestion that uncovers the remaining nuance.',
@@ -165,7 +165,7 @@ async function runTask<T>(
     agents: [task.agent],
     tasks: [task],
     env: resolveEnv(),
-    logLevel: 'debug'
+    //logLevel: 'debug'
   });
 
   const workflow = await team.start(inputs);
@@ -176,6 +176,9 @@ async function runTask<T>(
   }
 
   const rawResult = workflow.result;
+console.log("/Users/fu/Programming/cherrish-MatchMaker-Friend-KanbanJS/app/matchTeam.ts:178");
+console.log("====== rawResult =====", rawResult);
+
   let parsed: T;
 
   if (typeof rawResult === 'string') {
@@ -188,14 +191,23 @@ async function runTask<T>(
     parsed = rawResult as T;
   } else {
     parsed = ({ reply: String(rawResult ?? '') } as unknown) as T;
+    
   }
+  console.log("/Users/fu/Programming/cherrish-MatchMaker-Friend-KanbanJS/app/matchTeam.ts:193");
+  console.log("====== parsed =====", parsed);
 
   const statsObject =
-    workflow.stats && typeof workflow.stats === 'object'
-      ? (workflow.stats as unknown as Record<string, unknown>)
-      : null;
+  
+  workflow.stats && typeof workflow.stats === 'object'
+  ? (workflow.stats as unknown as Record<string, unknown>)
+  : null;
   const normalizedStats: AgentTaskStats = statsObject ? { ...statsObject } : null;
-
+  
+  
+  console.log("/Users/fu/Programming/cherrish-MatchMaker-Friend-KanbanJS/app/matchTeam.ts:199");
+  console.log("====== statsObject =====", statsObject ?? 'nostatsObject');
+  console.log("/Users/fu/Programming/cherrish-MatchMaker-Friend-KanbanJS/app/matchTeam.ts:204");
+  console.log("====== normalizedStats =====", normalizedStats ?? 'nonormalizedStats');
   return {
     data: parsed,
     stats: normalizedStats
