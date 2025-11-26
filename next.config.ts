@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 
 // Load shared secrets (e.g., symlinked ~/env.shared) so they are present
 // before Next.js reads its own .env.local/.env.production files.
-if (typeof process.loadEnvFile === "function") {
+if (
+  process.env.NODE_ENV === "development" &&
+  typeof process.loadEnvFile === "function"
+) {
   process.loadEnvFile(".env.shared");
 }
 
