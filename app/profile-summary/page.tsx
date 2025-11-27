@@ -38,8 +38,8 @@ export default function ProfileSummaryPage() {
       <section className="chat-card">
         <header className="chat-header">
           <div>
-            <h1>Psychology Summary</h1>
-            <p className="chat-subtitle">
+            <h1 className="app-title">Psychology Summary</h1>
+            <p className="app-subtitle">
               Anchored in today&apos;s conversation with the Matchmaker agent.
             </p>
           </div>

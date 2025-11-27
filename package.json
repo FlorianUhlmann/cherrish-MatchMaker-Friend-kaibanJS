@@ -16,9 +16,9 @@
   "dependencies": {
     "@kaibanjs/tools": "^0.8.0",
     "@langchain/core": "^0.3.79",
+    "@pinecone-database/pinecone": "^5.1.0",
     "kaibanjs": "^0.22.2",
     "next": "16.0.3",
-    "@pinecone-database/pinecone": "^5.1.0",
     "openai": "^4.78.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
@@ -33,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
     "tailwindcss": "^4",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "^5"
   }
 }

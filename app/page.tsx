@@ -526,8 +526,8 @@ export default function Home() {
       <section className="chat-card">
           <header className="chat-header">
             <div>
-              <h1>AI Matchmaker (MVP)</h1>
-              <p className="chat-subtitle">
+              <h1 className="app-title">AI Matchmaker (MVP)</h1>
+              <p className="app-subtitle">
                 Talk to your best-friend agent to describe your dream partner.
               </p>
             </div>
