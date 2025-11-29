@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import {
   useEffect,
   useRef,
@@ -7,6 +8,10 @@ import {
   type KeyboardEvent
 } from 'react';
 import { useRouter } from 'next/navigation';
+import { PageTitle } from '@/components/ui/PageTitle';
+import { DarkButton } from '@/components/ui/DarkButton';
+import { ChatContainer } from '@/components/ui/ChatContainer';
+import { ChatBubble } from '@/components/ui/ChatBubble';
 import type {
   PreferenceSummary,
   SessionPhase,
@@ -521,28 +526,59 @@ export default function Home() {
     loadingAction === 'send_voice' ||
     !input.trim();
 
+  const navLinks = [
+    { label: 'Home', href: 'https://cherrish.one' },
+    { label: 'Wingwomen', href: 'https://cherrish-wingwomen.eu' },
+    { label: 'About', href: 'https://cherrish.one/about' },
+    { label: 'Imprint', href: 'https://cherrish.one/imprint' }
+  ];
+
   return (
-    <main className="page">
-      <section className="chat-card">
-          <header className="chat-header">
-            <div>
-              <h1 className="app-title">AI Matchmaker (MVP)</h1>
-              <p className="app-subtitle">
-                Talk to your best-friend agent to describe your dream partner.
-              </p>
-            </div>
-            <div className="header-actions">
-              <button
-                type="button"
-                className="restart-button"
-                onClick={handleRestartChat}
-                disabled={loadingAction === 'init'}
-              >
-                Restart chat
-              </button>
-              <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
-            </div>
-          </header>
+    <>
+      <div className="menu-strip">
+        <div className="relative h-[60px] w-[150px]">
+          <Image
+            src="/cherrish-logo.png"
+            alt="Cherrish mark"
+            fill
+            className="object-contain"
+            priority
+          />
+        </div>
+        <nav className="menu-links" aria-label="Primary">
+          {navLinks.map((item) => (
+            <a
+              key={item.label}
+              className="menu-link"
+              href={item.href}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      </div>
+      <main className="page">
+        <section className="chat-card">
+        <header className="chat-header">
+          <div className="w-full">
+            <PageTitle
+              title="Wise Matchmaker Friend"
+              subtitle="Talk to your best-friend agent to describe your dream partner."
+            />
+          </div>
+          <div className="header-actions">
+            <DarkButton
+              type="button"
+              onClick={handleRestartChat}
+              disabled={loadingAction === 'init'}
+            >
+              Restart chat
+            </DarkButton>
+            <span className="phase-pill">{phase.replaceAll('_', ' ')}</span>
+          </div>
+        </header>
 
         {softCap && (
           <div className="nudge-banner">
@@ -551,19 +587,18 @@ export default function Home() {
           </div>
         )}
 
-        <div className="chat-window" ref={chatRef}>
+        <ChatContainer ref={chatRef}>
           {messages.map((message) => (
-            <div
+            <ChatBubble
               key={message.id}
-              className={`bubble ${message.role}`}
-            >
-              {message.content}
-            </div>
+              isUser={message.role === 'user'}
+              message={message.content}
+            />
           ))}
           {phase === 'matching' && (
-            <div className="bubble assistant">Searching for a match…</div>
+            <ChatBubble isUser={false} message="Searching for a match…" />
           )}
-        </div>
+        </ChatContainer>
 
         <div className="composer">
           <textarea
@@ -758,5 +793,6 @@ export default function Home() {
         </button>
       </aside>
     </main>
-  );
+  </>
+);
 }

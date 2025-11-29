@@ -2,15 +2,16 @@ import type { Metadata } from "next";
 import { Lora, Roboto } from "next/font/google";
 import "./globals.css";
 
-const heading = Lora({
+const lora = Lora({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-heading"
+  variable: "--font-lora",
+  display: "swap"
 });
-const body = Roboto({
+
+const roboto = Roboto({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "700"],
-  variable: "--font-body"
+  variable: "--font-roboto",
+  display: "swap"
 });
 
 export const metadata: Metadata = {
@@ -25,12 +26,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${heading.variable} ${body.variable} antialiased`}
-        suppressHydrationWarning
-      >
-        {children}
+    <html lang="en" className={`antialiased ${lora.variable} ${roboto.variable}`}>
+      <body className="bg-brand-dark bg-luxury-glow min-h-screen text-text-main selection:bg-accent selection:text-brand-dark">
+        <main className="flex flex-col items-center justify-center min-h-screen px-4 py-6">
+          {children}
+        </main>
       </body>
     </html>
   );
