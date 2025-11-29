@@ -4,7 +4,8 @@ import {
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type FormEvent
 } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
@@ -13,6 +14,44 @@ import type {
   PsychologyProfile,
   PresentedMatch
 } from './matchTeam';
+
+type OnboardedUser = {
+  id: string;
+  name: string;
+  email: string;
+  headline: string;
+  summary: string;
+  highlights: string[];
+};
+
+const MOCK_USERS: OnboardedUser[] = [
+  {
+    id: 'sofia',
+    name: 'Sofia',
+    email: 'sofia@aurora.example',
+    headline: 'Product designer | Warm, curious, loves city walks',
+    summary:
+      "You told us you're a positive, curious person who values emotional safety and playful dates.",
+    highlights: [
+      'Enjoys slow mornings with coffee and podcasts',
+      'Seeks partners who communicate directly with empathy',
+      'Prefers creative dates: galleries, markets, street food tours'
+    ]
+  },
+  {
+    id: 'miles',
+    name: 'Miles',
+    email: 'miles@aurora.example',
+    headline: 'Engineer | Thoughtful, loves deep talks & climbing',
+    summary:
+      'You mentioned you want someone adventurous who balances ambition with kindness.',
+    highlights: [
+      'Weekend bouldering and ramen seeker',
+      'Values humor and low-drama conversations',
+      'Looking for a partner who celebrates small wins together'
+    ]
+  }
+];
 
 type ChatMessage = {
   id: string;
@@ -40,6 +79,9 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [phase, setPhase] = useState<SessionPhase>('collecting');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [view, setView] = useState<'login' | 'welcome' | 'chat'>('login');
+  const [userProfile, setUserProfile] = useState<OnboardedUser | null>(null);
+  const [loginEmail, setLoginEmail] = useState(MOCK_USERS[0]?.email ?? '');
   const [input, setInput] = useState('');
   const [summary, setSummary] = useState<PreferenceSummary | null>(null);
   const [matchCard, setMatchCard] = useState<PresentedMatch | null>(null);
@@ -63,13 +105,11 @@ export default function Home() {
   const recordingActiveRef = useRef(false);
 
   useEffect(() => {
-    void initSession();
     return () => {
       if (timerRef.current) {
         window.clearInterval(timerRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -197,6 +237,36 @@ export default function Home() {
       const needsSpace = !/\s$/.test(prev);
       return `${prev}${needsSpace ? ' ' : ''}${trimmed}`;
     });
+  };
+
+  const findProfileByEmail = (email: string) => {
+    return (
+      MOCK_USERS.find(
+        (user) => user.email.toLowerCase() === email.trim().toLowerCase()
+      ) ?? MOCK_USERS[0] ?? null
+    );
+  };
+
+  const handleLoginSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const selectedProfile = findProfileByEmail(loginEmail);
+    setUserProfile(selectedProfile);
+    setView('welcome');
+  };
+
+  const handleEnterChat = async () => {
+    const profile = userProfile ?? findProfileByEmail(loginEmail);
+    if (!userProfile && profile) {
+      setUserProfile(profile);
+    }
+    resetConversationState();
+    setView('chat');
+    if (profile) {
+      pushAssistantMessage(
+        `Hey ${profile.name}! I'm Mara, your Matchmaker. I see in your profile: ${profile.summary}`
+      );
+    }
+    await initSession();
   };
 
   const sendVoiceBlob = async (blob: Blob) => {
@@ -521,242 +591,317 @@ export default function Home() {
     loadingAction === 'send_voice' ||
     !input.trim();
 
+  const profile = userProfile ?? findProfileByEmail(loginEmail);
+
   return (
     <main className="page">
-      <section className="chat-card">
-          <header className="chat-header">
-            <div>
-              <h1 className="app-title">AI Matchmaker (MVP)</h1>
-              <p className="app-subtitle">
-                Talk to your best-friend agent to describe your dream partner.
-              </p>
-            </div>
-            <div className="header-actions">
-              <button
-                type="button"
-                className="restart-button"
-                onClick={handleRestartChat}
-                disabled={loadingAction === 'init'}
-              >
-                Restart chat
-              </button>
-              <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
-            </div>
-          </header>
-
-        {softCap && (
-          <div className="nudge-banner">
-            You have reached {turnCount} turns. Grab your summary soon so we can
-            exit with momentum.
+      {view !== 'chat' ? (
+        <section className="onboarding-card">
+          <div className="onboarding-header">
+            <p className="eyebrow">{view === 'login' ? 'Step 1 of 2' : 'Step 2 of 2'}</p>
+            <h1 className="app-title">AI Matchmaker</h1>
+            <p className="app-subtitle">
+              Sign in to load your profile, preview what the app knows, and then
+              continue into the Matchmaker chat.
+            </p>
           </div>
-        )}
 
-        <div className="chat-window" ref={chatRef}>
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`bubble ${message.role}`}
-            >
-              {message.content}
-            </div>
-          ))}
-          {phase === 'matching' && (
-            <div className="bubble assistant">Searching for a match…</div>
-          )}
-        </div>
-
-        <div className="composer">
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            placeholder="Type your answer here…"
-            disabled={loadingAction === 'send_message'}
-          />
-          <div className="composer-actions">
-            {isRecording && (
-              <div className="mic-visualizer">
-                <div className="mic-meter active">
-                  <span
-                    className="mic-meter__level"
-                    style={{
-                      transform: `scaleX(${Math.max(0.08, volumeLevel)})`
-                    }}
-                  />
-                </div>
-                <span
-                  className={`timer ${recordSeconds >= 110 ? 'timer--warning' : ''}`}
-                >
-                  {`${recordSeconds}/120s`}
-                </span>
+          {view === 'login' ? (
+            <form className="login-form" onSubmit={handleLoginSubmit}>
+              <label htmlFor="email" className="input-label">
+                Work email (dummy)
+              </label>
+              <input
+                id="email"
+                type="email"
+                required
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="sofia@aurora.example"
+              />
+              <p className="helper-text">
+                We will swap this dummy lookup with your Firebase login and profile
+                fetch.
+              </p>
+              <button type="submit">Continue</button>
+            </form>
+          ) : (
+            <div className="welcome-card">
+              <div className="welcome-hero">
+                <div className="eyebrow">Welcome back</div>
+                <h2>{profile?.name ?? 'Your name'}</h2>
+                <p className="profile-headline">{profile?.headline}</p>
               </div>
-            )}
-            <div className="composer-controls">
-              {isRecording ? (
-                <div className="mic-actions">
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={handleRecordingAbort}
-                  >
-                    Abort
-                  </button>
-                  <button type="button" onClick={handleRecordingConfirm}>
-                    OK
-                  </button>
-                </div>
-              ) : (
+              <div className="profile-summary">
+                <p className="muted">This is what we know about you:</p>
+                <p>{profile?.summary}</p>
+                <ul>
+                  {profile?.highlights.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="welcome-actions">
                 <button
                   type="button"
-                  className={`mic ${
-                    loadingAction === 'send_voice' ? 'loading' : ''
-                  }`}
-                  onClick={toggleRecording}
-                  disabled={loadingAction === 'send_voice'}
+                  className="ghost"
+                  onClick={() => setView('login')}
                 >
-                  <span className="mic-icon" aria-hidden="true">
-                    <svg
-                      viewBox="0 0 16 16"
-                      width="16"
-                      height="16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path d="M8 4a2 2 0 0 1 2 2v3a2 2 0 0 1-4 0V6a2 2 0 0 1 2-2z" />
-                      <path d="M5 9a3 3 0 0 0 6 0" />
-                      <line x1="8" y1="12" x2="8" y2="15" />
-                      <line x1="5" y1="15" x2="11" y2="15" />
-                    </svg>
-                  </span>
-                  <span className="mic-label">Mic</span>
-                  {loadingAction === 'send_voice' && (
-                    <span className="mic-spinner" aria-hidden="true" />
-                  )}
+                  Switch user
                 </button>
+                <button type="button" onClick={handleEnterChat}>
+                  Continue to chat
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          <section className="chat-card">
+            <header className="chat-header">
+              <div>
+                <h1 className="app-title">AI Matchmaker (MVP)</h1>
+                <p className="app-subtitle">
+                  Talk to your best-friend agent to describe your dream partner.
+                </p>
+                {profile && (
+                  <div className="profile-chip">
+                    <span className="profile-chip__avatar">{profile.name[0]}</span>
+                    <div>
+                      <strong>{profile.name}</strong>
+                      <p>{profile.headline}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="header-actions">
+                <button
+                  type="button"
+                  className="restart-button"
+                  onClick={handleRestartChat}
+                  disabled={loadingAction === 'init'}
+                >
+                  Restart chat
+                </button>
+                <div className="phase-pill">{phase.replaceAll('_', ' ')}</div>
+              </div>
+            </header>
+
+            {softCap && (
+              <div className="nudge-banner">
+                You have reached {turnCount} turns. Grab your summary soon so we
+                can exit with momentum.
+              </div>
+            )}
+
+            <div className="chat-window" ref={chatRef}>
+              {messages.map((message) => (
+                <div key={message.id} className={`bubble ${message.role}`}>
+                  {message.content}
+                </div>
+              ))}
+              {phase === 'matching' && (
+                <div className="bubble assistant">Searching for a match…</div>
               )}
-              <button
-                type="button"
-                className="send-button"
-                onClick={handleSend}
-                disabled={disableSend}
-              >
-                Send
-              </button>
             </div>
-          </div>
-        </div>
-        {error && <div className="error-banner">{error}</div>}
-      </section>
 
-      <aside className="side-panel">
-        {summary && phase === 'awaiting_confirmation' && (
-          <div className="card summary-card">
-            <div className="card-header">
-              <h2>{summary.summary.headline}</h2>
-              <p>{summary.summary.synopsis}</p>
+            <div className="composer">
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                placeholder="Type your answer here…"
+                disabled={loadingAction === 'send_message'}
+              />
+              <div className="composer-actions">
+                {isRecording && (
+                  <div className="mic-visualizer">
+                    <div className="mic-meter active">
+                      <span
+                        className="mic-meter__level"
+                        style={{
+                          transform: `scaleX(${Math.max(0.08, volumeLevel)})`
+                        }}
+                      />
+                    </div>
+                    <span
+                      className={`timer ${
+                        recordSeconds >= 110 ? 'timer--warning' : ''
+                      }`}
+                    >
+                      {`${recordSeconds}/120s`}
+                    </span>
+                  </div>
+                )}
+                <div className="composer-controls">
+                  {isRecording ? (
+                    <div className="mic-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={handleRecordingAbort}
+                      >
+                        Abort
+                      </button>
+                      <button type="button" onClick={handleRecordingConfirm}>
+                        OK
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`mic ${
+                        loadingAction === 'send_voice' ? 'loading' : ''
+                      }`}
+                      onClick={toggleRecording}
+                      disabled={loadingAction === 'send_voice'}
+                    >
+                      <span className="mic-icon" aria-hidden="true">
+                        <svg
+                          viewBox="0 0 16 16"
+                          width="16"
+                          height="16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                        >
+                          <path d="M8 4a2 2 0 0 1 2 2v3a2 2 0 0 1-4 0V6a2 2 0 0 1 2-2z" />
+                          <path d="M5 9a3 3 0 0 0 6 0" />
+                          <line x1="8" y1="12" x2="8" y2="15" />
+                          <line x1="5" y1="15" x2="11" y2="15" />
+                        </svg>
+                      </span>
+                      <span className="mic-label">Mic</span>
+                      {loadingAction === 'send_voice' && (
+                        <span className="mic-spinner" aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="send-button"
+                    onClick={handleSend}
+                    disabled={disableSend}
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="card-section">
-              <strong>Signature traits</strong>
-              <ul>
-                {summary.summary.traits.map((trait) => (
-                  <li key={trait}>{trait}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="card-section">
-              <strong>Dealbreakers</strong>
-              <ul>
-                {summary.summary.dealbreakers.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="card-actions">
-              <button
-                type="button"
-                onClick={handleSummaryEdit}
-                disabled={loadingAction === 'request_more_questions'}
-                className="ghost"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={handleSummaryConfirm}
-                disabled={loadingAction === 'confirm_summary'}
-              >
-                Confirm & Match
-              </button>
-            </div>
-          </div>
-        )}
+            {error && <div className="error-banner">{error}</div>}
+          </section>
 
-        {matchCard && (
-          <div className="card match-card">
-            <div className="card-header">
-              <h2>{matchCard.narrative.title}</h2>
-              <p>{matchCard.narrative.blurb}</p>
-            </div>
-            <div className="card-section">
-              <strong>Why it fits</strong>
-              <ul>
-                {matchCard.narrative.compatibilityReasons.map((reason) => (
-                  <li key={reason}>{reason}</li>
-                ))}
-              </ul>
-            </div>
-            <p className="cta">{matchCard.narrative.callToAction}</p>
-            <div className="card-actions">
-              <button
-                type="button"
-                onClick={handleAnotherMatch}
-                disabled={loadingAction === 'request_new_match'}
-                className="ghost"
-              >
-                See Another
-              </button>
-              <button
-                type="button"
-                onClick={handleAcceptMatch}
-                disabled={loadingAction === 'accept_match'}
-              >
-                I like them
-              </button>
-            </div>
-          </div>
-        )}
+          <aside className="side-panel">
+            {summary && phase === 'awaiting_confirmation' && (
+              <div className="card summary-card">
+                <div className="card-header">
+                  <h2>{summary.summary.headline}</h2>
+                  <p>{summary.summary.synopsis}</p>
+                </div>
+                <div className="card-section">
+                  <strong>Signature traits</strong>
+                  <ul>
+                    {summary.summary.traits.map((trait) => (
+                      <li key={trait}>{trait}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="card-section">
+                  <strong>Dealbreakers</strong>
+                  <ul>
+                    {summary.summary.dealbreakers.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="card-actions">
+                  <button
+                    type="button"
+                    onClick={handleSummaryEdit}
+                    disabled={loadingAction === 'request_more_questions'}
+                    className="ghost"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSummaryConfirm}
+                    disabled={loadingAction === 'confirm_summary'}
+                  >
+                    Confirm & Match
+                  </button>
+                </div>
+              </div>
+            )}
 
-        {phase === 'feedback' && (
-          <div className="card feedback-card">
-            <h2>Give feedback</h2>
-            <textarea
-              placeholder="Tell Mara what resonated (or not)…"
-              value={feedbackText}
-              onChange={(event) => setFeedbackText(event.target.value)}
-            />
+            {matchCard && (
+              <div className="card match-card">
+                <div className="card-header">
+                  <h2>{matchCard.narrative.title}</h2>
+                  <p>{matchCard.narrative.blurb}</p>
+                </div>
+                <div className="card-section">
+                  <strong>Why it fits</strong>
+                  <ul>
+                    {matchCard.narrative.compatibilityReasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="cta">{matchCard.narrative.callToAction}</p>
+                <div className="card-actions">
+                  <button
+                    type="button"
+                    onClick={handleAnotherMatch}
+                    disabled={loadingAction === 'request_new_match'}
+                    className="ghost"
+                  >
+                    See Another
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAcceptMatch}
+                    disabled={loadingAction === 'accept_match'}
+                  >
+                    I like them
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {phase === 'feedback' && (
+              <div className="card feedback-card">
+                <h2>Give feedback</h2>
+                <textarea
+                  placeholder="Tell Mara what resonated (or not)…"
+                  value={feedbackText}
+                  onChange={(event) => setFeedbackText(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleFeedbackSubmit}
+                  disabled={
+                    !feedbackText.trim() ||
+                    loadingAction === 'submit_feedback'
+                  }
+                >
+                  Send feedback
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={handleFeedbackSubmit}
-              disabled={
-                !feedbackText.trim() ||
-                loadingAction === 'submit_feedback'
-              }
+              className="exit-button"
+              onClick={handleExit}
+              disabled={loadingAction === 'leave'}
             >
-              Send feedback
+              Exit Partner Search
             </button>
-          </div>
-        )}
-
-        <button
-          type="button"
-          className="exit-button"
-          onClick={handleExit}
-          disabled={loadingAction === 'leave'}
-        >
-          Exit Partner Search
-        </button>
-      </aside>
+          </aside>
+        </>
+      )}
     </main>
   );
 }
